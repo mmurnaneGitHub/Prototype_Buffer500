@@ -1,2 +1,2 @@
 # Prototype_Buffer500
-Prototype widget for finding historic properties within 500 feet of property.
+Esri Web AppBuilder prototype widget for finding historic properties within 500 feet of property.
