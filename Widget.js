@@ -67,7 +67,7 @@ define([
     },
 
     //START MJM FUNCTIONS ------------------------------------------------------------------------------
-    _buildDrawSection: function () {  //MJM - Draw & Query setup
+    _buildDrawSection: function () {  //MJM - Draw & Query Results setup
       //GLOBAL VARIABLES (no var)
       myMapSR = this.map.spatialReference;
       currentAddressResults = [];  //Object to hold CSV records for Permit History
@@ -100,7 +100,7 @@ define([
       });
       paramsBuffer.outSpatialReference = myMapSR;
       paramsBuffer.unit = esri.tasks.GeometryService["UNIT_FOOT"];
-      //---end Geometry Service - for buffer
+      //End Buffer parcel setup ------------------------------
 
       //START HERE - TRY IDENTIFY WITH 3,9
       //https://gis.cityoftacoma.org/arcgis/rest/services/PDS/DARTzoning/MapServer/3  //Historic Properties
@@ -114,7 +114,7 @@ define([
       this.toolbar.activate(Draw['POINT']);  //Enable map point draw ability
     },
 
-    _buildDocumentSection: function () {  //MJM - Permit History & Feature Drawings setup
+    _buildDocumentSection: function () {  //MJM - Results section setup
       var tpPermitHistory = new TitlePane({  //Results - put an id to dynamically update innerHTML with queries
         title: "<b>Results</b>",
         open: false,
@@ -124,7 +124,7 @@ define([
       tpPermitHistory.startup(); //place on page (waits for appendChild step)
     },
 
-    _drawLimitArea: function () {  //MJM - Draw check box and remove button actions
+    _drawLimitArea: function () {  //MJM - Reset results to start over
       currentAddressResults = [];  //Empty out object to hold CSV records for Permit History
       currentStreetResults = [];  //Empty out object to hold CSV records for Feature Drawings
       currentAllResults = [];  //Empty out object to hold CSV records for Permit History & Feature Drawings
@@ -141,13 +141,13 @@ define([
       this._drawLimitArea();  //Clear previous results
       var graphic = new Graphic(evt.geometry, new SimpleFillSymbol());
       this.map.graphics.add(graphic);  //Add drawn polygon to map
-      qParcel.geometry = graphic.geometry;  //Use graphic geometry for parcel & street query
-      document.getElementById("addressQuery").innerHTML = "<div><img src='widgets/Buffer500/images/loading.gif'> Retrieving information ...</div>"; //Address Section: Add waiting image
+      qParcel.geometry = graphic.geometry;  //Use graphic geometry for next query
+      document.getElementById("addressQuery").innerHTML = "<div><img src='widgets/Buffer500/images/loading.gif'> Retrieving information ...</div>"; //Results Section: Add waiting image
       qtParcel.execute(qParcel, lang.hitch(this, this._handleQueryParcel), function (err) { console.error("Query Error: " + err.message); }); //PARCELS: Trigger a query by drawn polygon, use lang.hitch to keep scope of this, add error catch message
     },
 
     _handleQueryParcel: function (results) {  //MJM - Process parcel query results from drawn polygon
-      //BUFFER parcel geometry first before address point query | Use parcel boundaries instead of drawn polygon (more exact) | Assume parcel topologically correct - no need to simplify [geometry]
+      //BUFFER - get parcel geometry first before next query | Use parcel boundaries instead of drawn polygon (more exact) | Assume parcel topologically correct - no need to simplify [geometry]
       if (results.features.length > 0) { //parcels found
         paramsBuffer.geometries = []; //Empty array to hold all parcel geometries
         for (var i = 0; i < results.features.length; i++) {
@@ -167,18 +167,17 @@ define([
 
           //Query historic properties with buffer polygon
           qAddress.geometry = parcelGraphic.geometry;  //Use graphic geometry for parcel & street query
-          qtAddress.execute(qAddress, lang.hitch(this, this._handleQueryAddress), function (err) { console.error("Query Error: " + err.message); }); //ADDRESSES: Trigger a query by drawn polygon, use lang.hitch to keep scope of this, add error catch message
-
+          qtAddress.execute(qAddress, lang.hitch(this, this._handleQueryAddress), function (err) { console.error("Query Error: " + err.message); }); //Trigger a query by drawn polygon, use lang.hitch to keep scope of this, add error catch message
         }), lang.hitch(this, function (err) {
           alert("Error retrieving parcel results: " + err.message);
           console.error("Parcel Buffer Error: " + err.message);
         }));
       } else {  //no parcels found
-        document.getElementById("addressQuery").innerHTML = 'No parcel found.<br>&nbsp;<br>'; //Update Permit History details | Done here because this._handleQueryAddress will not be run if no parcels within drawn polygon
+        document.getElementById("addressQuery").innerHTML = 'No parcel found.<br>&nbsp;<br>'; //Update results details | Done here because this._handleQueryAddress will not be run if no parcels within drawn polygon
       }
     },
 
-    _handleQueryAddress: function (results) {  //MJM - Address query results by parcel buffer (0') resulting from drawn polygon
+    _handleQueryAddress: function (results) {  //MJM - Address query results by parcel buffer (500') resulting from drawn polygon
       highlightResults = []; //object to hold feature boundaries for highlighting - empty out
       var highlightIDs = []; //object to hold create dom locations to run highlight boundary function for each layer
       var theFormattedResults = '';
