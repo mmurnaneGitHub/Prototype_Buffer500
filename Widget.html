@@ -1,0 +1,34 @@
+<div>
+  <div id="filterDiv" style="background-color:#EAECEE; padding:5px;">
+    <div>
+      Find historic properties within 500' of a parcel clicked on map.
+
+      <div data-dojo-type="dijit/TitlePane" data-dojo-props="title: '<b>Instructions</b>', open: false"
+        style="padding:10px 0px 10px 0px">
+        <p>
+          Find out what historic properties are within 500 feet of a property.
+        </p>
+        <br><b>Steps to find information:</b>
+        <ul>
+          <li>Click parcel on map.</li>
+          <li>Click to continue adding boundary points.</li>
+          <li>
+            Information will appear in the <b>Results</b> section below.
+            <font color="blue">Blue text</font> may be clicked to show data location.
+          </li>
+          <li>Click the 'Start Over' button to select a different property.</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div>
+      <button id="buttonDraw" type="button"></button> <!-- remove graphic, but stay in edit mode -->
+    </div>
+
+  </div>
+
+  <div data-dojo-attach-point="permitHistory" style="padding:10px 0px 0px 0px"></div>
+  <!--<div data-dojo-attach-point="featureDrawings" style="padding:10px 0px 10px 0px"></div>-->
+
+</div>
