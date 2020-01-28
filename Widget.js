@@ -70,7 +70,6 @@ define([
     _buildDrawSection: function () {  //MJM - Draw & Query setup
       //GLOBAL VARIABLES (no var)
       myMapSR = this.map.spatialReference;
-      checkPH = checkFD = false;  //Set to false until each CSV file is ready
       currentAddressResults = [];  //Object to hold CSV records for Permit History
       currentStreetResults = [];  //Object to hold CSV records for Feature Drawings
       currentAllResults = [];  //Object to hold CSV records for Permit History & Feature Drawings
@@ -103,24 +102,14 @@ define([
       paramsBuffer.unit = esri.tasks.GeometryService["UNIT_FOOT"];
       //---end Geometry Service - for buffer
 
-      qtAddress = new QueryTask("https://gis.cityoftacoma.org/arcgis/rest/services/PDS/DARTquery_WAB_PUBLIC/MapServer/1");  //Address Points - Permit History
       //START HERE - TRY IDENTIFY WITH 3,9
       //https://gis.cityoftacoma.org/arcgis/rest/services/PDS/DARTzoning/MapServer/3  //Historic Properties
       //https://gis.cityoftacoma.org/arcgis/rest/services/PDS/DARTzoning/MapServer/9  //Mixed Use Centers
-
+      qtAddress = new QueryTask("https://gis.cityoftacoma.org/arcgis/rest/services/PDS/DARTzoning/MapServer/3");  //Historic Properties
       qAddress = new Query();
       qAddress.returnGeometry = true;
-      qAddress.outFields = ["MAPTIP"];  //Address point return fields
-      qAddress.orderByFields = ["MAPTIP"];  //Sort field
-
-      new Button({  //Create a button to remove drawn graphic
-        label: 'Start Over',
-        title: 'Remove drawn area and start over',
-        iconClass: 'dijitIconDelete',
-        disabled: false,
-        onClick: lang.hitch(this, this._drawLimitArea)
-      }, "buttonDraw").startup();
-
+      qAddress.outFields = ["P_NAME", "NOMINATION"];  //Return fields
+      qAddress.orderByFields = ["P_NAME"];  //Sort field
       this.map.on("load", this._drawCreateToolbar());  //Create draw toolbar
       this.toolbar.activate(Draw['POINT']);  //Enable map point draw ability
     },
@@ -140,44 +129,21 @@ define([
       currentStreetResults = [];  //Empty out object to hold CSV records for Feature Drawings
       currentAllResults = [];  //Empty out object to hold CSV records for Permit History & Feature Drawings
       this.map.graphics.clear(); //Remove all map graphics
-      checkPH = checkFD = false;  //Set to false until each CSV file is ready
       document.getElementById("addressQuery").innerHTML = ""; //Clear last address point query text - won't exist on intial start up
-      this.toolbar.activate(Draw['POINT']);  //enable map draw ability
     },
 
     _drawCreateToolbar: function () {  //MJM - add drawing ability
       this.toolbar = new Draw(this.map);
-      this.own(on(this.toolbar, "draw-end", lang.hitch(this, this._drawAddToMap))); //run after draw double-click
+      this.own(on(this.toolbar, "draw-end", lang.hitch(this, this._drawAddToMap))); //run after draw click
     },
 
     _drawAddToMap: function (evt) {  //MJM - Add graphic to map
-      this.toolbar.deactivate();  //Disable draw ability
+      this._drawLimitArea();  //Clear previous results
       var graphic = new Graphic(evt.geometry, new SimpleFillSymbol());
-      var areaGraphic = geometryEngine.geodesicArea(geometryEngine.simplify(graphic.geometry), "acres");  //Calculate graphic area in acres
-      var areaLimit = 200;  //Limit for graphic size
       this.map.graphics.add(graphic);  //Add drawn polygon to map
-      if (areaGraphic > areaLimit) {
-        alert("Sorry, area drawn is " + areaGraphic.toFixed(2) + " acres.  Please limit query area to " + areaLimit + " acres.")
-      } else {
-        qParcel.geometry = graphic.geometry;  //Use graphic geometry for parcel & street query
-        document.getElementById("addressQuery").innerHTML = "<div><img src='widgets/Buffer500/images/loading.gif'> Retrieving information ...</div>"; //Address Section: Add waiting image
-
-        qtParcel.execute(qParcel, lang.hitch(this, this._handleQueryParcel), function (err) { console.error("Query Error: " + err.message); }); //PARCELS: Trigger a query by drawn polygon, use lang.hitch to keep scope of this, add error catch message
-
-        //Wait for both CSVs to be complete to concatenate into one CSV --------
-        checkPH = checkFD = false;  //Set to false until each CSV is ready
-        var doneCSV = setInterval(lang.hitch(this, function () {
-          if (checkPH && checkFD) {  //Check if CSV files complete
-            //JOIN ARRAYS (TEST FOR 0 LENGTH) & MAKE THE CSV BUTTON VISIBLE NOW - START HERE!!!!  REWRITE _createButtonCSV
-            currentAllResults = currentAddressResults.concat(currentStreetResults);    //Join two arrays (Permit History & Feature Drawings)
-            if (currentAllResults.length > 0) {  ////At least one address point or stret segment was found
-              //this._toggleButtonCSV("block");  //Show CSV button
-            }
-            clearInterval(doneCSV);  //Stop checking
-          }
-        }), 100); // check every 100ms
-        //---------------------------------------------------------------------
-      }
+      qParcel.geometry = graphic.geometry;  //Use graphic geometry for parcel & street query
+      document.getElementById("addressQuery").innerHTML = "<div><img src='widgets/Buffer500/images/loading.gif'> Retrieving information ...</div>"; //Address Section: Add waiting image
+      qtParcel.execute(qParcel, lang.hitch(this, this._handleQueryParcel), function (err) { console.error("Query Error: " + err.message); }); //PARCELS: Trigger a query by drawn polygon, use lang.hitch to keep scope of this, add error catch message
     },
 
     _handleQueryParcel: function (results) {  //MJM - Process parcel query results from drawn polygon
@@ -199,7 +165,7 @@ define([
           this.map.setExtent(parcelGraphic.geometry.getExtent(), true);  // Zoom to buffer extent
           //End QC  -----------------------------------------------------------------
 
-          //Query address points with buffer polygon
+          //Query historic properties with buffer polygon
           qAddress.geometry = parcelGraphic.geometry;  //Use graphic geometry for parcel & street query
           qtAddress.execute(qAddress, lang.hitch(this, this._handleQueryAddress), function (err) { console.error("Query Error: " + err.message); }); //ADDRESSES: Trigger a query by drawn polygon, use lang.hitch to keep scope of this, add error catch message
 
@@ -208,8 +174,7 @@ define([
           console.error("Parcel Buffer Error: " + err.message);
         }));
       } else {  //no parcels found
-        document.getElementById("addressQuery").innerHTML = 'No address points found ...<br>&nbsp;<br>'; //Update Permit History details | Done here because this._handleQueryAddress will not be run if no parcels within drawn polygon
-        checkPH = true;  //Let the setInterval know the Permit History CSV is done (empty)
+        document.getElementById("addressQuery").innerHTML = 'No parcel found.<br>&nbsp;<br>'; //Update Permit History details | Done here because this._handleQueryAddress will not be run if no parcels within drawn polygon
       }
     },
 
@@ -218,29 +183,25 @@ define([
       var highlightIDs = []; //object to hold create dom locations to run highlight boundary function for each layer
       var theFormattedResults = '';
       if (results.features.length == 0) {
-        document.getElementById("addressQuery").innerHTML = 'No address points found ...<br>&nbsp;<br>'; //Update Permit History details
-        checkPH = true;  //Let the setInterval know the Permit History CSV is done (empty)
+        document.getElementById("addressQuery").innerHTML = 'No historic properties found within 500 feet.<br>&nbsp;<br>'; //Update Permit History details
       } else if (results.features.length == 1) {
-        theFormattedResults += 'One address point found ...<br>&nbsp;<br>'; //Update Permit History details
+        theFormattedResults += 'One historic property found within 500 feet of parcel ...<br>&nbsp;<br>'; //Update Permit History details
       } else {
-        theFormattedResults += results.features.length + ' address points found ...<br>&nbsp;<br>'; //Update Permit History details
+        theFormattedResults += results.features.length + ' historic properties found within 500 feet of parcel ...<br>&nbsp;<br>'; //Update Permit History details
       }
       if (results.features.length > 0) {
-        //PERMIT HISTORY
+        //Historic Properties
         for (var i = 0; i < results.features.length; i++) {
-          theFormattedResults += "&nbsp;&nbsp;<a href=\"https://wsowa.ci.tacoma.wa.us/cot-itd/addressbased/permithistory.aspx?Address=" + results.features[i].attributes['MAPTIP'] + "&Mode=simple\" target=\"_blank\">E-Vault Document(s)</a> for ";
+          theFormattedResults += "<a href=\"" + results.features[i].attributes['NOMINATION'] + "\" target=\"_blank\">Tacoma Register Original Nomination</a><br>for ";
           theFormattedResults += " <span id='Highlight_Address" + i + "'></span><br>&nbsp;<br>";
-          highlightIDs.push(results.features[i].attributes['MAPTIP']); //Add geometry info to array for link update later - update each layer highlight field - use later to place Highlight function
+          highlightIDs.push(results.features[i].attributes['P_NAME']); //Add geometry info to array for link update later - update each layer highlight field - use later to place Highlight function
           highlightResults.push(results.features[i]); //update with results from each layer - contains geometry for highlighting
         }
-
-        this._Address_format4CSV(results.features, results.fieldAliases);  //Send results to CSV file
-
         document.getElementById("addressQuery").innerHTML = theFormattedResults; //Update info panel
       }
       for (var i = 0; i < highlightIDs.length; i++) {  //Update field value with highlight function
         var list = dojo.byId("Highlight_Address" + i);  //Add dynamic highlight function to formatted text
-        domConstruct.create("span", { innerHTML: "<i><span style='color: blue; cursor: pointer;' title='Highlight address'>" + highlightIDs[i] + "</span></i>" }, list);
+        domConstruct.create("span", { innerHTML: "<i><span style='color: blue; cursor: pointer;' title='Highlight property'>" + highlightIDs[i] + "</span></i>" }, list);
         //Method to add click event  - Need this.own to maintain scope of dynamic text function within the popup; lang.hitch to keep scope of function within widget
         this.own(on(list, 'click', lang.hitch(this, this._showFeature, i, 'Address')));  //this.own(on(Node, 'click', lang.hitch(this, FUNCTION, param1, param2, etc)));
       }
@@ -261,46 +222,6 @@ define([
       feature.geometry.spatialReference = myMapSR;  //Set feature's spatial reference so selected layer highlighted correctly
       feature.id = "identify";  //add id for later removal by id
       this.map.graphics.add(feature);  //add graphic to map
-    },
-
-    _Address_format4CSV: function (results, aliases) {  //MJM - Create CSV-style array of with array of results records and array of alias names
-      currentAddressResults = [];  //Might do this on Start Over instead!!!
-      array.forEach(results, function (record) { //loop through all records & Create array of feature.attributes
-        var currentRecord = record.attributes;
-
-        Object.keys(aliases).forEach(function (key) {
-          currentRecord[aliases[key]] = currentRecord[key]; // add to array the values with an alias name - assign new key with value of prior key
-        });
-
-        currentAddressResults.push(currentRecord); //add formatted results to array
-
-        currentAddressResults.forEach(function (n) {
-          n.Type = 'Permit History';  //Add Type field values to each record in array
-          n.Link = 'https://wsowa.ci.tacoma.wa.us/cot-itd/addressbased/permithistory.aspx?Address=' + n.Address;   //Add Link field values to each record in array
-        });
-
-      });
-      checkPH = true;  //Let the setInterval know the Permit History CSV is done
-    },
-
-    _Street_format4CSV: function (results, aliases) {  //MJM - Create CSV-style array of with array of results records and array of alias names
-      currentStreetResults = [];  //Might do this on Start Over instead!!!
-      array.forEach(results, function (record) { //loop through all records & Create array of feature.attributes
-        var currentRecord = record.attributes;
-
-        Object.keys(aliases).forEach(function (key) {
-          currentRecord[aliases[key]] = currentRecord[key]; // add to array the values with an alias name - assign new key with value of prior key
-        });
-
-        currentStreetResults.push(currentRecord); //add formatted results to array
-
-        currentStreetResults.forEach(function (n) {
-          n.Type = 'Feature Drawings';  //Add Type field values to each record in array
-          n.Link = 'http://www.govme.org/gMap/Info/eVaultFilter.aspx?StreetIDs=' + n.BIGID;   //Add Link field values to each record in array
-        });
-
-      });
-      checkFD = true;  //Let the setInterval know the Feature Drawings CSV is done
     },
 
     _removeGraphic: function (graphicID) {  //MJM - remove highlighted elements (named)
